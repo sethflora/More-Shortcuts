@@ -357,6 +357,22 @@ body[data-theme='sepia'] .logo {
   background-clip: padding-box;
 }
 
+.toast[hidden] {
+  display: none;
+}
+
+.toast {
+  margin: 0 16px 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--tile-bg);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.4;
+  flex-shrink: 0;
+}
+
 .footer {
   display: flex;
   justify-content: center;

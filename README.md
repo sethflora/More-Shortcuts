@@ -19,7 +19,7 @@ Chrome's built-in New Tab shortcuts cap out at a handful of tiles with no way to
 ## Tech
 
 - Manifest V3 (Chrome Extensions)
-- `chrome.storage.local` for persistence
+- `chrome.storage.sync` for persistence, so shortcuts, folders, and your theme choice follow you to any Chrome browser signed into the same Google account — synced entirely through Chrome's built-in sync, with no third-party servers, accounts, or analytics involved. Falls back to `chrome.storage.local` (that device only) if a shortcut list is too large for sync's per-item limit, with a small warning shown in the popup.
 - `chrome.tabs` and the internal `_favicon` API
 - CSS custom properties + `color-mix()` for runtime theming
 

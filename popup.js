@@ -3,6 +3,10 @@ const THEME_KEY = 'theme';
 const DEFAULT_SLOT_COUNT = 12;
 const ADD_INCREMENT = 4;
 
+// chrome.storage.sync caps each item at 8192 bytes; stay clear of the hard cap.
+const SYNC_ITEM_BYTE_LIMIT = 8192;
+const SYNC_ITEM_SAFE_LIMIT = SYNC_ITEM_BYTE_LIMIT - 512;
+
 const grid = document.getElementById('grid');
 const addSlotBtn = document.getElementById('addSlotBtn');
 const logoImg = document.getElementById('logoImg');
@@ -10,6 +14,8 @@ const folderHeading = document.getElementById('folderHeading');
 const themeBtn = document.getElementById('themeBtn');
 const themeMenu = document.getElementById('themeMenu');
 const themeSwatches = document.querySelectorAll('.theme-swatch');
+
+const toast = document.getElementById('toast');
 
 const overlay = document.getElementById('modalOverlay');
 const form = document.getElementById('shortcutForm');
@@ -58,16 +64,72 @@ function faviconUrl(pageUrl) {
   return u.toString();
 }
 
+let toastTimer = null;
+
+function showWarning(message) {
+  if (!toast) return;
+  toast.textContent = message;
+  toast.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    toast.hidden = true;
+  }, 5000);
+}
+
+function byteSize(value) {
+  return new TextEncoder().encode(JSON.stringify(value)).length;
+}
+
+// Writes each key to chrome.storage.sync so it follows the user's Google
+// account across browsers, unless it's too big for sync's 8KB-per-item cap,
+// in which case that key falls back to this device's chrome.storage.local.
+function safeSet(data) {
+  const syncData = {};
+  const localData = {};
+
+  for (const key of Object.keys(data)) {
+    if (byteSize(data[key]) > SYNC_ITEM_SAFE_LIMIT) {
+      localData[key] = data[key];
+    } else {
+      syncData[key] = data[key];
+    }
+  }
+
+  if (Object.keys(syncData).length) chrome.storage.sync.set(syncData);
+  if (Object.keys(localData).length) {
+    chrome.storage.local.set(localData);
+    showWarning('Shortcut list too large to sync — saved locally on this device only.');
+  }
+}
+
 function load() {
-  chrome.storage.local.get([STORAGE_KEY, THEME_KEY], (result) => {
-    rootSlots = result[STORAGE_KEY] || new Array(DEFAULT_SLOT_COUNT).fill(null);
-    applyTheme(result[THEME_KEY] || 'dark');
-    render();
+  chrome.storage.sync.get([STORAGE_KEY, THEME_KEY], (syncResult) => {
+    const hasSyncData = syncResult[STORAGE_KEY] !== undefined || syncResult[THEME_KEY] !== undefined;
+
+    if (hasSyncData) {
+      rootSlots = syncResult[STORAGE_KEY] || new Array(DEFAULT_SLOT_COUNT).fill(null);
+      applyTheme(syncResult[THEME_KEY] || 'dark');
+      render();
+      return;
+    }
+
+    // No sync data yet: fall back to any pre-existing local-only data
+    // (from before this extension synced) and migrate it into sync once.
+    chrome.storage.local.get([STORAGE_KEY, THEME_KEY], (localResult) => {
+      const hasLocalData = localResult[STORAGE_KEY] !== undefined || localResult[THEME_KEY] !== undefined;
+      rootSlots = localResult[STORAGE_KEY] || new Array(DEFAULT_SLOT_COUNT).fill(null);
+      applyTheme(localResult[THEME_KEY] || 'dark');
+      render();
+
+      if (hasLocalData) {
+        safeSet({ [STORAGE_KEY]: rootSlots, [THEME_KEY]: localResult[THEME_KEY] || 'dark' });
+      }
+    });
   });
 }
 
 function save() {
-  chrome.storage.local.set({ [STORAGE_KEY]: rootSlots });
+  safeSet({ [STORAGE_KEY]: rootSlots });
 }
 
 function applyTheme(theme) {
@@ -400,7 +462,7 @@ themeSwatches.forEach((swatch) => {
   swatch.addEventListener('click', () => {
     const theme = swatch.dataset.theme;
     applyTheme(theme);
-    chrome.storage.local.set({ [THEME_KEY]: theme });
+    safeSet({ [THEME_KEY]: theme });
     themeMenu.hidden = true;
   });
 });
